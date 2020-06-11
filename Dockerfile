@@ -50,6 +50,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 
+RUN microdnf update -y && rm -rf /var/cache/yum
+
 # Copy the agent binary from the build stage
 COPY --from=build /opt/logdna-agent-v2/target/release/logdna-agent /work/
 WORKDIR /work/
