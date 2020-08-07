@@ -52,11 +52,17 @@ ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy
 
 RUN apt update -y && \
 apt upgrade -y --fix-missing && \
-apt install ca-certificates -y
+apt install ca-certificates libcap2-bin -y && \
+rm -rf /var/lib/apt/lists/*
 
 # Copy the agent binary from the build stage
 COPY --from=build /opt/logdna-agent-v2/target/release/logdna-agent /work/
 WORKDIR /work/
 RUN chmod -R 777 .
+
+RUN setcap "cap_dac_read_search+p" /work/logdna-agent
+RUN groupadd -g 500 logdna && \
+useradd -u 5000 -g logdna logdna
+USER logdna
 
 CMD ["./logdna-agent"]
