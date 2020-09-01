@@ -88,7 +88,7 @@ The compiled binary will be built to `./target/release/logdna-agent`.
 To build a Docker image of the agent, ensure docker is installed properly, verify the docker engine is running, and then run the following command:
 
 ```
-make docker-build-image
+make build-image
 ```
 
 The resulting image can be found by listing the images:

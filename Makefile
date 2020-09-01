@@ -13,10 +13,13 @@ HADOLINT_IMAGE ?= $(HADOLINT_IMAGE_REPO):$(HADOLINT_IMAGE_TAG)
 HADLINT_IMAGE := $(HADOLINT_IMAGE)
 
 DOCKER := docker
-DOCKER_RUN := docker run --rm -w /build -v $(shell pwd):/build:Z
+DOCKER_DISPATCH := ./docker/dispatch.sh "/build" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
 DOCKER_PUBLIC_IMAGE := docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
+
+RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
+HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 
 VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/$(REPO)
@@ -32,15 +35,11 @@ ifeq ($(BETA_VERSION),)
 	BETA_VERSION := 0
 endif
 
-ENTRYPOINT := ./docker/entrypoint.sh $(shell id -u) $(shell id -g) "$(shell uname)" "/build"
-
 ifeq ($(ALL), 1)
 	CLEAN_TAG := *
 else
 	CLEAN_TAG := $(BUILD_TAG)
 endif
-
-CLEAN_DOCKER_IMAGES = if [[ ! -z "$(shell docker images -q $(1))" ]]; then docker images -q $(1) | xargs docker rmi -f; fi
 
 PULL ?= 1
 ifeq ($(PULL), 1)
@@ -55,24 +54,25 @@ REMOTE_BRANCH := $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length
 
 .PHONY:build
 build: ## Build the agent
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo build"
+	$(RUST_COMMAND) "cargo build"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo build --release && strip ./target/release/logdna-agent"
+	$(RUST_COMMAND) "cargo build --release && strip ./target/release/logdna-agent"
 
 .PHONY:test
 test: ## Run unit tests
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo test"
+	$(RUST_COMMAND) "cargo test"
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo clean"
+	$(RUST_COMMAND) "cargo clean"
 
 .PHONY:clean-docker
 clean-docker: ## Cleans the intermediate and final agent images left over from the build-image target
 	@# Clean any agent images, left over from the multi-stage build
-	$(call CLEAN_DOCKER_IMAGES,$(REPO):$(CLEAN_TAG))
+	if [[ ! -z "$(shell docker images -q $(REPO):$(CLEAN_TAG))" ]]; then docker images -q $(REPO):$(CLEAN_TAG) | xargs docker rmi -f; fi
+
 
 .PHONY:clean-all
 clean-all: clean-docker ## Deep cleans the project and removed any docker images
@@ -80,23 +80,23 @@ clean-all: clean-docker ## Deep cleans the project and removed any docker images
 
 .PHONY:lint-format
 lint-format: ## Checks for formatting errors
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo fmt -- --check"
+	$(RUST_COMMAND) "cargo fmt -- --check"
 
 .PHONY:lint-clippy
 lint-clippy: ## Checks for code errors
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo clippy --all-targets -- -D warnings"
+	$(RUST_COMMAND) "cargo clippy --all-targets -- -D warnings"
 
 .PHONY:lint-audit
 lint-audit: ## Audits packages for issues
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo audit"
+	$(RUST_COMMAND) "cargo audit"
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
-	$(DOCKER_RUN) $(HADOLINT_IMAGE) hadolint Dockerfile --ignore DL3006
+	$(HADOLINT_COMMAND) "hadolint Dockerfile --ignore DL3006"
 
 .PHONY:lint
 lint: lint-docker ## Runs all the linters
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo fmt -- --check && cargo clippy --all-targets -- -D warnings && cargo audit"
+	$(RUST_COMMAND) "cargo fmt -- --check && cargo clippy --all-targets -- -D warnings && cargo audit"
 
 .PHONY:release-major
 release-major: ## Create a new major beta release and push to github
@@ -104,7 +104,7 @@ release-major: ## Create a new major beta release and push to github
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-beta.1)
 	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the major beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_VERSION,$(NEW_VERSION))
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo generate-lockfile"
+	$(RUST_COMMAND) "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -117,7 +117,7 @@ release-minor: ## Create a new minor beta release and push to github
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-beta.1)
 	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the minor beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_VERSION,$(NEW_VERSION))
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo generate-lockfile"
+	$(RUST_COMMAND) "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -129,7 +129,7 @@ release-patch: ## Create a new patch beta release and push to github
 	$(eval NEW_VERSION := $(TARGET_BRANCH).$(shell expr $(PATCH_VERSION) + 1)-beta.1)
 	@if [ ! "$(REMOTE_BRANCH)" = "$(TARGET_BRANCH)" ]; then echo "Can't create the patch release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"$(TARGET_BRANCH)\""; exit 1; fi
 	$(call CHANGE_VERSION,$(NEW_VERSION))
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo generate-lockfile"
+	$(RUST_COMMAND) "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -141,7 +141,7 @@ release-beta: ## Bump the beta version and push to github
 	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).$(PATCH_VERSION)-beta.$(shell expr $(BETA_VERSION) + 1))
 	$(call CHANGE_VERSION,$(NEW_VERSION))
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo generate-lockfile"
+	$(RUST_COMMAND) "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -153,7 +153,7 @@ release: ## Create a new release from the current beta and push to github
 	$(eval TARGET_BRANCH := $(shell expr $(MAJOR_VERSION).$(MINOR_VERSION) + 1))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).$(PATCH_VERSION))
 	$(call CHANGE_VERSION,$(NEW_VERSION))
-	$(DOCKER_RUN) $(RUST_IMAGE) $(ENTRYPOINT) "cargo generate-lockfile"
+	$(RUST_COMMAND) "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
