@@ -43,20 +43,10 @@ pipeline {
                                 ok "Publish image"
                             }
                             steps {
-                                withCredentials([string(credentialsId: 'icr-iamapikey', variable: 'ICR_IAMAPIKEY'), string(credentialsId: 'dockerhub-access-token', variable: 'DOCKERHUB_ACCESS_TOKEN')]) {
-                                    sh '''
-                                        echo "${DOCKERHUB_ACCESS_TOKEN}" | docker login -u logdna --password-stdin
-                                        echo "${ICR_IAMAPIKEY}" | docker login -u iamapikey --password-stdin icr.io
-                                        make publish
-                                    '''
-                                }
-                            }
-                            post {
-                                always {
-                                    sh '''
-                                        docker logout
-                                        docker logout icr.io
-                                    '''
+                                withRegistry('https://index.docker.io/v1/', 'dockerhub-username-password') {
+                                    withRegistry('icr.io', 'icr-username-password') {
+                                        sh 'make publish'
+                                    }
                                 }
                             }
                         }

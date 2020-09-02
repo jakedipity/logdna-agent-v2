@@ -95,8 +95,7 @@ lint-docker: ## Lint the Dockerfile for issues
 	$(HADOLINT_COMMAND) "hadolint Dockerfile --ignore DL3006"
 
 .PHONY:lint
-lint: lint-docker ## Runs all the linters
-	$(RUST_COMMAND) "cargo fmt -- --check && cargo clippy --all-targets -- -D warnings && cargo audit"
+lint: lint-docker lint-format lint-clippy lint-audit ## Runs all the linters
 
 .PHONY:release-major
 release-major: ## Create a new major beta release and push to github
