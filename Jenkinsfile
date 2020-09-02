@@ -15,13 +15,13 @@ pipeline {
         stage('Test') {
             steps {
                 sh """
-                    make lint RUST_IMAGE_REPO=${RUST_IMAGE_REPO}
-                    make test RUST_IMAGE_REPO=${RUST_IMAGE_REPO}
+                    echo 'TEST' #make lint RUST_IMAGE_REPO=${RUST_IMAGE_REPO}
+                    echo 'LINT' #make test RUST_IMAGE_REPO=${RUST_IMAGE_REPO}
                 """
             }
             post {
                 success {
-                    sh "make clean RUST_IMAGE_REPO=${RUST_IMAGE_REPO}"
+                    sh "echo 'CLEAN' #make clean RUST_IMAGE_REPO=${RUST_IMAGE_REPO}"
                 }
             }
         }
@@ -29,12 +29,12 @@ pipeline {
             stages {
                 stage('Build Image') {
                     steps {
-                        sh "make build-image RUST_IMAGE_REPO=${RUST_IMAGE_REPO}"
+                        sh "echo 'BUILD-IMAGE' #make build-image RUST_IMAGE_REPO=${RUST_IMAGE_REPO}"
                     }
                 }
                 stage('Check Publish Images') {
                     when {
-                        branch pattern: "\\d\\.\\d", comparator: "REGEXP"
+                        branch pattern: "initial-ci-cd-test", comparator: "REGEXP"
                     }
                     stages {
                         stage('Publish Images') {
@@ -43,9 +43,12 @@ pipeline {
                                 ok "Publish image"
                             }
                             steps {
-                                withRegistry('https://index.docker.io/v1/', 'dockerhub-username-password') {
-                                    withRegistry('icr.io', 'icr-username-password') {
-                                        sh 'make publish'
+			        script {
+                                    docker.withRegistry('https://docker.io', 'dockerhub-username-password') {
+                                        docker.withRegistry('https://icr.io', 'icr-username-password') {
+                                            sh 'docker pull icr.io/ext/logdna-agent:2.1.9'
+                                            sh 'docker pull docker.io/logdna/logdna-agent:2.1.9'
+					}
                                     }
                                 }
                             }
